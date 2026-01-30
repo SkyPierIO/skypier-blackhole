@@ -71,17 +71,26 @@ Skypier Blackhole is a high-performance DNS-based domain blocking system designe
 │  └────────────────────────┘                                    │
 │               │                                                 │
 │  ┌────────────┴─────────────────────────────────────────────┐  │
-│  │         Blocklist Updater (tokio-cron-scheduler)         │  │
-│  │  • Scheduled updates (daily at 00:00 EST)               │  │
-│  │  • HTTP downloads from GitHub                           │  │
-│  │  • ETag-based conditional requests                      │  │
-│  │  • Atomic hot-reload                                    │  │
+│  │      Update Scheduler (tokio-cron-scheduler)             │  │
+│  │  • Cron-based scheduling (configurable)                 │  │
+│  │  • HTTP downloads via BlocklistDownloader               │  │
+│  │  • Automatic hot-reload after download                  │  │
+│  │  • Background async task                                │  │
+│  │  • Cross-platform (Linux/macOS/Windows)                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│               │                                                 │
+│  ┌────────────┴─────────────────────────────────────────────┐  │
+│  │      Blocklist Downloader (reqwest)                      │  │
+│  │  • HTTP client with 30s timeout                         │  │
+│  │  • Multi-format parsing (hosts, plain, wildcards)       │  │
+│  │  • Domain validation (filters IPs, invalid entries)     │  │
+│  │  • Cache to local file                                  │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │               │                                                 │
 │  ┌────────────┴─────────────────────────────────────────────┐  │
 │  │         Logger (tracing)                                 │  │
 │  │  • Structured logging                                   │  │
-│  │  • stdout + /var/log/skypier/blackhole.log             │  │
+│  │  • Platform-aware log paths                            │  │
 │  │  • Blocked query logging with source IP                │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
@@ -173,48 +182,94 @@ log_level = "info"
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"  # Daily at midnight
+schedule = "0 0 * * *"  # Daily at midnight (cron format)
 timezone = "EST"
 ```
 
-### 4. Blocklist Updater
-**Responsibility**: Automatically fetch and update blocklists
+**Platform-Specific Paths**:
+- Linux: `/etc/skypier/blackhole.toml`
+- macOS: `/usr/local/etc/skypier/blackhole.toml`
+- Windows: `C:\ProgramData\Skypier\blackhole.toml`
+
+### 4. Update Scheduler (`scheduler.rs`)
+**Responsibility**: Automatically download and update blocklists on schedule
 
 **Features**:
-- Scheduled updates using tokio-cron-scheduler
-- HTTP downloads with reqwest
-- ETag/Last-Modified caching
-- Atomic reload (prepare → swap → old cleanup)
-- Manual trigger via CLI
+- Cron-based scheduling using tokio-cron-scheduler
+- Cross-platform (Linux/macOS/Windows)
+- Timezone support (UTC, EST, PST, etc.)
+- Background async task execution
+- Automatic hot-reload after updates
+- Manual trigger support via CLI
+
+**Implementation**:
+```rust
+pub struct UpdateScheduler {
+    scheduler: JobScheduler,
+    config: Arc<Config>,
+    blocklist: Arc<BlocklistManager>,
+}
+```
 
 **Update Process**:
 ```
-1. Schedule: 00:00 EST daily
-2. For each remote URL:
-   a. HTTP GET with If-None-Match (ETag)
-   b. If 304 Not Modified → skip
-   c. If 200 OK → download and parse
-3. Merge all lists (remote + local)
-4. Build new data structures (Trie, HashSet, Bloom)
-5. Atomic swap with Arc::swap
-6. Log statistics
+1. Cron schedule triggers (e.g., "0 0 * * *" for daily at midnight)
+2. Download from remote URLs via BlocklistDownloader
+3. Parse and validate domains (filter IPs, invalid entries)
+4. Save to cache file (remote-blocklist-cache.txt)
+5. Clear current blocklist
+6. Reload all sources:
+   - Custom list
+   - Local lists
+   - Remote cache
+7. Hot-reload blocklist (zero downtime)
+8. Log statistics and results
 ```
 
-### 5. CLI Interface (`cli.rs`)
+**Cron Schedule Examples**:
+- `0 0 * * *` - Daily at midnight
+- `0 */6 * * *` - Every 6 hours
+- `0 0 */2 * *` - Every 2 days
+- `*/30 * * * *` - Every 30 minutes
+
+### 5. Blocklist Downloader (`downloader.rs`)
+**Responsibility**: HTTP download and parsing of remote blocklists
+
+**Features**:
+- HTTP client with reqwest (30s timeout)
+- Multi-format parsing:
+  - Plain domains (one per line)
+  - Hosts file format (`0.0.0.0 domain.com`, `127.0.0.1 domain.com`)
+  - Wildcard entries (`*.domain.com`)
+- Domain validation (filters out IPs, localhost, invalid entries)
+- Batch processing (multiple URLs)
+- Deduplication
+
+**Performance**:
+- 86,332 domains downloaded in ~270ms
+- Cache file: 1.7MB
+- Load time: ~125ms
+
+### 6. CLI Interface (`cli.rs`)
 **Responsibility**: User interaction and control
 
 **Commands**:
-- `start`: Launch DNS server as daemon
-- `stop`: Gracefully shutdown server
-- `reload`: Hot-reload blocklists (SIGHUP)
+- `start`: Launch DNS server with integrated scheduler
+- `stop`: Gracefully shutdown server and scheduler
+- `reload`: Hot-reload blocklists (SIGHUP on Unix, CLI on Windows)
 - `status`: Show statistics (domains blocked, queries/sec, uptime)
 - `add <domain>`: Add domain to custom blocklist
 - `remove <domain>`: Remove domain from custom blocklist
 - `list`: Show blocklist statistics
-- `update`: Force immediate blocklist update
+- `update`: Force immediate blocklist update (bypasses schedule)
 - `test <domain>`: Test if domain would be blocked
 
-### 6. Logger (`logger.rs`)
+**Cross-Platform Support**:
+- Platform-aware default config paths (Linux/macOS/Windows)
+- Signal handling on Unix (SIGHUP, SIGTERM, SIGINT)
+- CLI commands work on all platforms
+
+### 7. Logger (`logger.rs`)
 **Responsibility**: Structured logging
 
 **Features**:

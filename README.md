@@ -3,7 +3,7 @@
 
 # Skypier Blackhole
 
-<img src="doc/logo.png" alt="Skypier Blackhole Logo" height="150">
+<img src="doc/logo.png" alt="Skypier Blackhole Logo" height="300">
 
 **High-Performance DNS-Based Domain Blocking for Skypier VPN Nodes**
 
@@ -28,8 +28,10 @@ Skypier Blackhole is a Rust-based DNS resolver designed to run alongside Skypier
 
 - **Blazing Fast**: Sub-100μs latency for blocked queries
 - **Memory Safe**: Written in Rust with zero unsafe code
-- **Hot Reload**: Update blocklists without service restart
-- **Auto-Update**: Daily automatic downloads from GitHub blocklists
+- **Hot Reload**: Update blocklists without service restart (SIGHUP signal)
+- **Auto-Update**: Scheduled automatic downloads from remote blocklists
+- **Cron Scheduler**: Flexible scheduling with cron expressions (daily, hourly, custom)
+- **Cross-Platform**: Works on Linux, macOS, and Windows
 - **Wildcard Support**: Block entire subdomains with `*.domain.com`
 - **Monitoring**: Real-time statistics and detailed logging
 - **Production Ready**: Systemd integration and DEB packages
@@ -56,6 +58,8 @@ Skypier Blackhole is a Rust-based DNS resolver designed to run alongside Skypier
 
 ## Installation
 
+Skypier Blackhole runs on **Linux**, **macOS**, and **Windows**. Choose the installation method that works best for your platform.
+
 ### Option 1: DEB Package (Recommended for Debian/Ubuntu)
 
 ```bash
@@ -69,7 +73,7 @@ sudo dpkg -i skypier-blackhole_amd64.deb
 sudo systemctl status skypier-blackhole
 ```
 
-### Option 2: From Source
+### Option 2: From Source (All Platforms)
 
 ```bash
 # Prerequisites: Rust 1.70+ and Cargo
@@ -96,7 +100,7 @@ sudo cp systemd/skypier-blackhole.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-### Option 3: Pre-built Binary
+### Option 3: Pre-built Binary (All Platforms)
 
 ```bash
 # Download the latest binary
@@ -105,9 +109,23 @@ wget https://github.com/skypier/skypier-blackhole/releases/latest/download/skypi
 # Make it executable
 chmod +x skypier-blackhole
 
-# Move to /usr/bin
-sudo mv skypier-blackhole /usr/bin/
+# Move to appropriate location
+# Linux: /usr/bin/
+# macOS: /usr/local/bin/
+# Windows: Add to PATH
 ```
+
+### Platform-Specific Configuration Paths
+
+Skypier Blackhole uses platform-appropriate default paths:
+
+| Platform | Config File | Custom Blocklist | Logs |
+|----------|-------------|------------------|------|
+| **Linux** | `/etc/skypier/blackhole.toml` | `/etc/skypier/custom-blocklist.txt` | `/var/log/skypier/blackhole.log` |
+| **macOS** | `/usr/local/etc/skypier/blackhole.toml` | `/usr/local/etc/skypier/custom-blocklist.txt` | `/usr/local/var/log/skypier/blackhole.log` |
+| **Windows** | `C:\ProgramData\Skypier\blackhole.toml` | `C:\ProgramData\Skypier\custom-blocklist.txt` | `C:\ProgramData\Skypier\Logs\blackhole.log` |
+
+> **Note**: On Linux/macOS, you can override these with the `--config` flag. Windows paths use `PROGRAMDATA` environment variable.
 
 ## Quick Start
 
@@ -172,7 +190,7 @@ sudo journalctl -u skypier-blackhole -f
 
 ## Configuration
 
-The configuration file is located at `/etc/skypier/blackhole.toml`. See [config/blackhole.toml.example](config/blackhole.toml.example) for a complete example with comments.
+The configuration file uses TOML format and is automatically located based on your platform (see table above). You can also specify a custom path with `--config`.
 
 ### Basic Configuration
 
@@ -180,7 +198,7 @@ The configuration file is located at `/etc/skypier/blackhole.toml`. See [config/
 [server]
 listen_addr = "127.0.0.1"  # Use "0.0.0.0" for all interfaces
 listen_port = 53
-upstream_dns = ["1.1.1.1:53"]
+upstream_dns = ["1.1.1.1:53", "8.8.8.8:53"]
 blocked_response = "refused"  # Options: "refused", "nxdomain", {ip = "0.0.0.0"}
 
 [blocklist]
@@ -196,8 +214,39 @@ log_level = "info"
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"  # Daily at midnight
+schedule = "0 0 * * *"  # Daily at midnight (cron format)
 timezone = "EST"
+```
+
+### Scheduler Configuration
+
+The built-in scheduler automatically downloads and updates blocklists on a configurable schedule:
+
+```toml
+[updater]
+enabled = true                    # Enable/disable automatic updates
+schedule = "0 0 * * *"           # Cron expression (see below)
+timezone = "EST"                 # Timezone for schedule (UTC, EST, PST, etc.)
+```
+
+**Common Cron Schedules**:
+- `0 0 * * *` - Daily at midnight
+- `0 */6 * * *` - Every 6 hours
+- `0 0 */2 * *` - Every 2 days at midnight
+- `0 3 * * 0` - Every Sunday at 3am
+- `*/30 * * * *` - Every 30 minutes
+
+**How it works**:
+1. Scheduler runs in background when DNS server starts
+2. Downloads blocklists from `remote_lists` URLs at scheduled time
+3. Validates and caches domains locally
+4. Hot-reloads blocklist without interrupting DNS queries
+5. Logs update results for monitoring
+
+**Manual Trigger**:
+```bash
+# Force an update now (bypasses schedule)
+skypier-blackhole update
 ```
 
 ### Configuration Options
@@ -277,21 +326,23 @@ sudo journalctl -u skypier-blackhole -f
 sudo systemctl status skypier-blackhole
 ```
 
-### Signal Handling
+### Signal Handling (Linux/macOS)
 
-Skypier Blackhole supports Unix signals for graceful operations:
+Skypier Blackhole supports Unix signals for graceful operations on Linux and macOS systems:
+
+> **Note**: Signal handling is Unix-specific. On Windows, use the CLI commands (`skypier-blackhole reload`, `stop`) instead.
 
 #### SIGHUP - Hot Reload Blocklists
 Reload blocklists without restarting the server (zero downtime):
 
 ```bash
-# Method 1: Direct signal
+# Method 1: Direct signal (Unix only)
 kill -HUP $(pgrep skypier-blackhole)
 
-# Method 2: Systemd reload
+# Method 2: Systemd reload (Linux)
 sudo systemctl reload skypier-blackhole
 
-# Method 3: CLI command (future)
+# Method 3: CLI command (all platforms)
 skypier-blackhole reload
 ```
 
@@ -486,16 +537,26 @@ skypier-blackhole/
 ├── src/
 │   ├── main.rs          # Entry point
 │   ├── lib.rs           # Library exports
-│   ├── cli.rs           # CLI interface
-│   ├── config.rs        # Configuration management
+│   ├── cli.rs           # CLI interface (cross-platform)
+│   ├── config.rs        # Configuration management (platform-aware paths)
 │   ├── dns.rs           # DNS server implementation
-│   ├── blocklist.rs     # Blocklist management
+│   ├── blocklist.rs     # Blocklist management (wildcard support)
+│   ├── downloader.rs    # Remote blocklist downloader
+│   ├── scheduler.rs     # Automatic update scheduler (NEW)
 │   └── logger.rs        # Logging setup
 ├── doc/
 │   ├── ARCHITECTURE.md  # Architecture documentation
 │   └── UserStories.md   # User stories and tasks
 ├── config/
 │   └── blackhole.toml.example  # Example configuration
+├── scripts/
+│   ├── test-dns.sh              # DNS integration tests
+│   ├── test-signals.sh          # Signal handling tests
+│   ├── test-wildcards.sh        # Wildcard matching tests
+│   ├── test-cli.sh              # CLI commands tests
+│   ├── test-update.sh           # Remote download tests
+│   ├── test-scheduler.sh        # Scheduler tests (NEW)
+│   └── setup.sh                 # Production setup script
 ├── systemd/
 │   └── skypier-blackhole.service  # Systemd service file
 ├── tests/               # Integration tests
@@ -505,18 +566,29 @@ skypier-blackhole/
 
 ## FAQ
 
+### Q: What platforms are supported?
+
+**A**: Skypier Blackhole runs on:
+- ✅ **Linux** (x86_64, ARM64)
+- ✅ **macOS** (Intel, Apple Silicon)
+- ✅ **Windows** (x86_64)
+
+All core features work on all platforms. Signal handling (SIGHUP) is Unix-only; use CLI commands on Windows.
+
 ### Q: How is this different from Pi-hole?
 
 **A**: Skypier Blackhole is:
 - Written in Rust (faster, more memory-safe)
 - Single binary with no dependencies
+- Cross-platform (Linux/macOS/Windows vs Linux-only)
 - Optimized for VPN node deployments
 - <100μs latency vs Pi-hole's ~1-5ms
-- Smaller memory footprint
+- Smaller memory footprint (<50MB vs ~200MB)
+- Built-in cron scheduler (no external cron needed)
 
 ### Q: Can I use this as a Pi-hole replacement?
 
-**A**: Yes! Configure `listen_addr = "0.0.0.0"` to listen on all interfaces, then point your devices to the server's IP.
+**A**: Yes! Configure `listen_addr = "0.0.0.0"` to listen on all interfaces, then point your devices to the server's IP. Works great for home networks.
 
 ### Q: Does it support DNSSEC?
 
@@ -528,15 +600,23 @@ skypier-blackhole/
 
 ### Q: How do I update blocklists manually?
 
-**A**: Run `skypier-blackhole update` to force an immediate update.
+**A**: Run `skypier-blackhole update` to force an immediate update, bypassing the schedule.
+
+### Q: How does the automatic scheduler work?
+
+**A**: The scheduler runs in the background using cron expressions. It downloads blocklists at the configured time, caches them locally, and hot-reloads without interrupting DNS queries. Default: daily at midnight.
+
+### Q: Can I disable automatic updates?
+
+**A**: Yes, set `enabled = false` in the `[updater]` section of your config. You can still manually update with `skypier-blackhole update`.
 
 ### Q: Can I whitelist domains?
 
-**A**: Not in the current version. Whitelist support is planned for v0.2.0.
+**A**: Not in the current version. Whitelist support is planned for v0.3.0.
 
 ### Q: What blocklist format is supported?
 
-**A**: Standard Pi-hole format (one domain per line), with `#` for comments. Wildcards are supported with `*.domain.com` syntax.
+**A**: Standard Pi-hole format (one domain per line), with `#` for comments. Wildcards are supported with `*.domain.com` syntax. Compatible with StevenBlack hosts files and similar formats.
 
 ### Q: How much memory does it use?
 
