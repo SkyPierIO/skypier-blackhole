@@ -40,12 +40,6 @@ impl BlocklistManager {
         }
     }
     
-    /// Reverse a domain for trie-based subdomain matching
-    /// example.com -> com.example
-    fn reverse_domain(domain: &str) -> String {
-        domain.split('.').rev().collect::<Vec<_>>().join(".")
-    }
-    
     /// Check if a domain matches any wildcard patterns
     fn matches_wildcard(domain: &str, wildcards: &HashSet<String>) -> bool {
         // For domain "sub.example.com", check if any wildcard base matches

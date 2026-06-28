@@ -109,7 +109,7 @@ fn default_blocked_response() -> BlockedResponse {
 }
 
 fn default_custom_list() -> String {
-    "/etc/skypier/custom-blocklist.txt".to_string()
+    get_default_custom_list_path()
 }
 
 fn default_true() -> bool {
@@ -117,7 +117,51 @@ fn default_true() -> bool {
 }
 
 fn default_log_path() -> String {
+    get_default_log_path()
+}
+
+// Platform-specific default paths
+
+#[cfg(target_os = "linux")]
+fn get_default_custom_list_path() -> String {
+    "/etc/skypier/custom-blocklist.txt".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn get_default_custom_list_path() -> String {
+    "/usr/local/etc/skypier/custom-blocklist.txt".to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn get_default_custom_list_path() -> String {
+    format!("{}\\Skypier\\custom-blocklist.txt",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn get_default_custom_list_path() -> String {
+    "custom-blocklist.txt".to_string()
+}
+
+#[cfg(target_os = "linux")]
+fn get_default_log_path() -> String {
     "/var/log/skypier/blackhole.log".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn get_default_log_path() -> String {
+    "/usr/local/var/log/skypier/blackhole.log".to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn get_default_log_path() -> String {
+    format!("{}\\Skypier\\Logs\\blackhole.log",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+fn get_default_log_path() -> String {
+    "blackhole.log".to_string()
 }
 
 fn default_log_level() -> String {
@@ -130,6 +174,28 @@ fn default_update_schedule() -> String {
 
 fn default_timezone() -> String {
     "EST".to_string()
+}
+
+/// Get the default configuration file path for the current platform
+#[cfg(target_os = "linux")]
+pub fn get_default_config_path() -> String {
+    "/etc/skypier/blackhole.toml".to_string()
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_default_config_path() -> String {
+    "/usr/local/etc/skypier/blackhole.toml".to_string()
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_default_config_path() -> String {
+    format!("{}\\Skypier\\blackhole.toml",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+pub fn get_default_config_path() -> String {
+    "blackhole.toml".to_string()
 }
 
 impl Config {
