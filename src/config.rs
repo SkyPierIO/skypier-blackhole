@@ -169,7 +169,7 @@ fn default_log_level() -> String {
 }
 
 fn default_update_schedule() -> String {
-    "0 0 * * *".to_string() // Daily at midnight
+    "0 0 0 * * *".to_string() // Daily at midnight (sec min hour dom month dow)
 }
 
 fn default_timezone() -> String {

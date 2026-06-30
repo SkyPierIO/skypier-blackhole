@@ -9,8 +9,7 @@ async fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
     
-    tracing::info!("Starting Skypier Blackhole DNS resolver");
-    tracing::info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Starting Skypier Blackhole DNS resolver");
     
     // Execute CLI command (each command loads its own config)
     cli.execute().await?;

@@ -39,7 +39,7 @@ impl UpdateScheduler {
         let schedule = &self.config.updater.schedule;
         let timezone = &self.config.updater.timezone;
         
-        info!("Setting up automatic updates: {} ({})", schedule, timezone);
+        info!(schedule = %schedule, timezone = %timezone, "Setting up automatic updates");
         
         // Clone Arc references for the job closure
         let config = Arc::clone(&self.config);
@@ -55,10 +55,10 @@ impl UpdateScheduler {
 
                 match Self::run_update(&config, &blocklist).await {
                     Ok(count) => {
-                        info!("Automatic update completed: {} domains loaded", count);
+                        info!(domains = count, "Automatic update completed");
                     }
                     Err(e) => {
-                        error!("Automatic update failed: {}", e);
+                        error!(error = %e, "Automatic update failed");
                     }
                 }
             })
@@ -101,7 +101,7 @@ impl UpdateScheduler {
         
         // Save to cache
         std::fs::write(&cache_path, domains.join("\n"))?;
-        info!("Saved {} domains to cache: {}", domains.len(), cache_path.display());
+        info!(domains = domains.len(), cache = %cache_path.display(), "Saved domains to cache");
         
         // Reload blocklist from all sources (including new cache)
         blocklist.clear().await?;
@@ -116,7 +116,7 @@ impl UpdateScheduler {
                 .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
                 .map(|line| line.trim().to_string())
                 .collect();
-            info!("Loaded {} domains from custom list", domains.len());
+            info!(domains = domains.len(), source = "custom list", "Loaded domains");
             all_domains.extend(domains);
         }
         
@@ -129,7 +129,7 @@ impl UpdateScheduler {
                     .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
                     .map(|line| line.trim().to_string())
                     .collect();
-                info!("Loaded {} domains from {}", domains.len(), path);
+                info!(domains = domains.len(), source = %path, "Loaded domains");
                 all_domains.extend(domains);
             }
         }
@@ -142,7 +142,7 @@ impl UpdateScheduler {
                 .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
                 .map(|line| line.trim().to_string())
                 .collect();
-            info!("Loaded {} domains from remote cache", domains.len());
+            info!(domains = domains.len(), source = "remote cache", "Loaded domains");
             all_domains.extend(domains);
         }
         
@@ -151,8 +151,7 @@ impl UpdateScheduler {
         let duration = Utc::now().signed_duration_since(start);
         let total_count = blocklist.count().await;
         
-        info!("Update completed in {}ms: {} total domains",
-              duration.num_milliseconds(), total_count);
+        info!(duration_ms = duration.num_milliseconds(), total_domains = total_count, "Update completed");
         
         Ok(total_count)
     }
@@ -177,8 +176,8 @@ impl UpdateScheduler {
         // In production, you might want to use a full cron parser
         let schedule = &self.config.updater.schedule;
         
-        // For "0 0 * * *" (daily at midnight), calculate next midnight
-        if schedule == "0 0 * * *" {
+        // For "0 0 0 * * *" (daily at midnight), calculate next midnight
+        if schedule == "0 0 0 * * *" {
             let now = Utc::now();
             let tomorrow = now.date_naive().succ_opt()?;
             let midnight = tomorrow.and_hms_opt(0, 0, 0)?;
@@ -219,7 +218,7 @@ mod tests {
             },
             updater: crate::config::UpdaterConfig {
                 enabled: true,
-                schedule: "0 0 * * *".to_string(),
+                schedule: "0 0 0 * * *".to_string(),
                 timezone: "UTC".to_string(),
             },
         }
@@ -267,18 +266,19 @@ mod tests {
     
     #[test]
     fn test_cron_expression_validation() {
-        // Valid cron expressions
+        // Valid cron expressions (tokio-cron-scheduler uses 6 fields:
+        // sec min hour day-of-month month day-of-week)
         let valid = vec![
-            "0 0 * * *",       // Daily at midnight
-            "0 */6 * * *",     // Every 6 hours
-            "0 0 */2 * *",     // Every 2 days
-            "0 3 * * 0",       // Every Sunday at 3am
+            "0 0 0 * * *",     // Daily at midnight
+            "0 0 */6 * * *",   // Every 6 hours
+            "0 0 0 */2 * *",   // Every 2 days
+            "0 0 3 * * 0",     // Every Sunday at 3am
         ];
-        
+
         for expr in valid {
             // tokio-cron-scheduler validates on job creation
             // We'll just check format here
-            assert!(expr.split_whitespace().count() == 5, "Invalid cron expression: {}", expr);
+            assert!(expr.split_whitespace().count() == 6, "Invalid cron expression: {}", expr);
         }
     }
 }

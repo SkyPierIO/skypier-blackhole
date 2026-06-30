@@ -205,7 +205,7 @@ log_level = "info"                 # trace | debug | info | warn | error
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"             # cron; default is daily at midnight
+schedule = "0 0 0 * * *"           # cron (6-field, with seconds); default is daily at midnight
 timezone = "EST"
 ```
 
@@ -225,7 +225,7 @@ Full reference:
 | | `log_path` | `/var/log/skypier/blackhole.log` | |
 | | `log_level` | `info` | |
 | `updater` | `enabled` | `true` | Background auto-update |
-| | `schedule` | `0 0 * * *` | Cron expression |
+| | `schedule` | `0 0 0 * * *` | Cron expression (6-field: sec min hour dom month dow) |
 | | `timezone` | `EST` | Timezone the cron runs in |
 
 ### Blocklists
@@ -262,13 +262,14 @@ tracker.example.com
 If `[updater] enabled = true`, a cron task runs inside the server, downloads
 everything in `remote_lists` on schedule, writes it to a cache file next to
 your custom list, and hot-reloads without dropping queries. The schedule is a
-standard five-field cron expression interpreted in the configured timezone:
+six-field cron expression (the leading field is **seconds**, as required by
+`tokio-cron-scheduler`) interpreted in the configured timezone:
 
 ```
-0 0 * * *      daily at midnight
-0 */6 * * *    every six hours
-0 3 * * 0      Sundays at 03:00
-*/30 * * * *   every thirty minutes
+0 0 0 * * *      daily at midnight
+0 0 */6 * * *    every six hours
+0 0 3 * * 0      Sundays at 03:00
+0 */30 * * * *   every thirty minutes
 ```
 
 You can always force a refresh by hand with `skypier-blackhole update`, and you

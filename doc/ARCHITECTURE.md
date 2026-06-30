@@ -182,7 +182,7 @@ log_level = "info"
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"  # Daily at midnight (cron format)
+schedule = "0 0 0 * * *"  # Daily at midnight (6-field cron: sec min hour dom month dow)
 timezone = "EST"
 ```
 
@@ -213,7 +213,7 @@ pub struct UpdateScheduler {
 
 **Update Process**:
 ```
-1. Cron schedule triggers (e.g., "0 0 * * *" for daily at midnight)
+1. Cron schedule triggers (e.g., "0 0 0 * * *" for daily at midnight)
 2. Download from remote URLs via BlocklistDownloader
 3. Parse and validate domains (filter IPs, invalid entries)
 4. Save to cache file (remote-blocklist-cache.txt)
@@ -227,9 +227,9 @@ pub struct UpdateScheduler {
 ```
 
 **Cron Schedule Examples**:
-- `0 0 * * *` - Daily at midnight
-- `0 */6 * * *` - Every 6 hours
-- `0 0 */2 * *` - Every 2 days
+- `0 0 0 * * *` - Daily at midnight
+- `0 0 */6 * * *` - Every 6 hours
+- `0 0 0 */2 * *` - Every 2 days
 - `*/30 * * * *` - Every 30 minutes
 
 ### 5. Blocklist Downloader (`downloader.rs`)

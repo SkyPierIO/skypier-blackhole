@@ -150,7 +150,7 @@ log_path = "/var/log/skypier/blackhole.log"
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"  # Cron expression (daily at midnight)
+schedule = "0 0 0 * * *"  # Cron expression, 6-field with seconds (daily at midnight)
 timezone = "EST"        # Your timezone (UTC, EST, PST, etc.)
 ```
 
@@ -168,9 +168,9 @@ The scheduler runs in the background and automatically updates blocklists:
 ```toml
 [updater]
 enabled = true
-schedule = "0 0 * * *"   # Daily at midnight
-# schedule = "0 */6 * * *"  # Every 6 hours
-# schedule = "0 0 */2 * *"  # Every 2 days
+schedule = "0 0 0 * * *"   # Daily at midnight (sec min hour dom month dow)
+# schedule = "0 0 */6 * * *"  # Every 6 hours
+# schedule = "0 0 0 */2 * *"  # Every 2 days
 timezone = "EST"
 ```
 

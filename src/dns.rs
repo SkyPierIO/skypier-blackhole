@@ -46,17 +46,17 @@ impl DnsServer {
             self.config.server.listen_addr, self.config.server.listen_port
         );
         
-        tracing::info!("Starting DNS server on {}", listen_addr);
-        
+        tracing::info!(addr = %listen_addr, "Starting DNS server");
+
         // Bind UDP socket
         let socket = UdpSocket::bind(&listen_addr).await?;
-        tracing::info!("DNS server listening on UDP {}", listen_addr);
-        
+        tracing::info!(proto = "UDP", addr = %listen_addr, "DNS server listening");
+
         // Create upstream DNS client
         let upstream = self.config.server.upstream_dns.first()
             .ok_or_else(|| anyhow::anyhow!("No upstream DNS configured"))?;
-        
-        tracing::info!("Using upstream DNS: {}", upstream);
+
+        tracing::info!(upstream = %upstream, "Using upstream DNS");
         
         // Main server loop
         self.run_server(socket).await?;
@@ -74,18 +74,18 @@ impl DnsServer {
             let (len, src) = match socket.recv_from(&mut buf).await {
                 Ok(result) => result,
                 Err(e) => {
-                    tracing::error!("Failed to receive from socket: {}", e);
+                    tracing::error!(error = %e, "Failed to receive from socket");
                     continue;
                 }
             };
             
-            tracing::debug!("Received {} bytes from {}", len, src);
+            tracing::debug!(bytes = len, src = %src, "Received packet");
             
             // Parse DNS message
             let query = match Message::from_bytes(&buf[..len]) {
                 Ok(msg) => msg,
                 Err(e) => {
-                    tracing::warn!("Failed to parse DNS message from {}: {}", src, e);
+                    tracing::warn!(src = %src, error = %e, "Failed to parse DNS message");
                     continue;
                 }
             };
@@ -95,7 +95,7 @@ impl DnsServer {
             let socket_clone = Arc::clone(&socket);
             tokio::spawn(async move {
                 if let Err(e) = server.handle_query(query, src, socket_clone).await {
-                    tracing::error!("Error handling query: {}", e);
+                    tracing::error!(error = %e, "Error handling query");
                 }
             });
         }
@@ -118,19 +118,19 @@ impl DnsServer {
         let query_name = match query.queries().first() {
             Some(q) => q.name().to_utf8(),
             None => {
-                tracing::warn!("Query from {} has no questions", src);
+                tracing::warn!(src = %src, "Query has no questions");
                 return Ok(());
             }
         };
         
-        tracing::debug!("Query from {}: {}", src, query_name);
+        tracing::debug!(src = %src, domain = %query_name, "Query received");
         
         // Check if domain is blocked
         let is_blocked = self.blocklist.is_blocked(&query_name).await;
         
         let response = if is_blocked {
             // Domain is blocked
-            tracing::info!("[BLOCKED] domain={} source_ip={}", query_name, src.ip());
+            tracing::info!(domain = %query_name, source_ip = %src.ip(), "blocked");
             
             {
                 let mut stats = self.stats.write().await;
@@ -141,7 +141,7 @@ impl DnsServer {
             self.create_blocked_response(&query)
         } else {
             // Domain is allowed - forward to upstream
-            tracing::debug!("[ALLOWED] domain={} source_ip={}", query_name, src.ip());
+            tracing::debug!(domain = %query_name, source_ip = %src.ip(), "allowed");
             
             {
                 let mut stats = self.stats.write().await;

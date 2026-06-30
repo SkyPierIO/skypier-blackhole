@@ -18,5 +18,5 @@ log_level = "info"
 
 [updater]
 enabled = true
-schedule = "0 0 * * *"
+schedule = "0 0 0 * * *"
 timezone = "EST"
