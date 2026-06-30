@@ -101,7 +101,7 @@ We welcome feature suggestions! Please open an issue describing:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT/Apache-2.0 dual license).
+By contributing, you agree that your contributions will be licensed under the same terms as the project (MIT License).
 
 ## Questions?
 

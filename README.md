@@ -460,8 +460,7 @@ Pull requests welcome. The short version: fork, branch, make the change, run
 
 ## License
 
-Dual-licensed under MIT ([LICENSE-MIT](LICENSE-MIT)) or Apache 2.0
-([LICENSE-APACHE](LICENSE-APACHE)), your choice.
+Licensed under the MIT License ([LICENSE-MIT](LICENSE-MIT)).
 
 ## Acknowledgments
 
