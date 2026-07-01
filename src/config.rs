@@ -1,8 +1,8 @@
+use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::IpAddr;
 use std::path::Path;
-use crate::Result;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -17,15 +17,15 @@ pub struct ServerConfig {
     /// Listen address for DNS server
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
-    
+
     /// Listen port for DNS server
     #[serde(default = "default_listen_port")]
     pub listen_port: u16,
-    
+
     /// Upstream DNS servers to forward non-blocked queries
     #[serde(default = "default_upstream_dns")]
     pub upstream_dns: Vec<String>,
-    
+
     /// Response to return for blocked domains
     #[serde(default = "default_blocked_response")]
     pub blocked_response: BlockedResponse,
@@ -47,15 +47,15 @@ pub struct BlocklistConfig {
     /// Remote URLs to download blocklists from
     #[serde(default)]
     pub remote_lists: Vec<String>,
-    
+
     /// Local blocklist file paths
     #[serde(default)]
     pub local_lists: Vec<String>,
-    
+
     /// Path to custom blocklist file
     #[serde(default = "default_custom_list")]
     pub custom_list: String,
-    
+
     /// Enable wildcard domain matching
     #[serde(default = "default_true")]
     pub enable_wildcards: bool,
@@ -66,11 +66,11 @@ pub struct LoggingConfig {
     /// Enable logging of blocked queries
     #[serde(default = "default_true")]
     pub log_blocked: bool,
-    
+
     /// Log file path
     #[serde(default = "default_log_path")]
     pub log_path: String,
-    
+
     /// Log level (trace, debug, info, warn, error)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -81,11 +81,11 @@ pub struct UpdaterConfig {
     /// Enable automatic updates
     #[serde(default = "default_true")]
     pub enabled: bool,
-    
+
     /// Update schedule (cron format)
     #[serde(default = "default_update_schedule")]
     pub schedule: String,
-    
+
     /// Timezone for schedule (e.g., "EST", "UTC")
     #[serde(default = "default_timezone")]
     pub timezone: String,
@@ -138,8 +138,10 @@ fn get_default_custom_list_path() -> String {
 
 #[cfg(target_os = "windows")]
 fn get_default_custom_list_path() -> String {
-    format!("{}\\Skypier\\custom-blocklist.txt",
-        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+    format!(
+        "{}\\Skypier\\custom-blocklist.txt",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
+    )
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -159,8 +161,10 @@ fn get_default_log_path() -> String {
 
 #[cfg(target_os = "windows")]
 fn get_default_log_path() -> String {
-    format!("{}\\Skypier\\Logs\\blackhole.log",
-        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+    format!(
+        "{}\\Skypier\\Logs\\blackhole.log",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
+    )
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -193,8 +197,10 @@ pub fn get_default_config_path() -> String {
 
 #[cfg(target_os = "windows")]
 pub fn get_default_config_path() -> String {
-    format!("{}\\Skypier\\blackhole.toml",
-        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()))
+    format!(
+        "{}\\Skypier\\blackhole.toml",
+        std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string())
+    )
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -209,9 +215,18 @@ impl Config {
         let config: Config = toml::from_str(&content)?;
         Ok(config)
     }
-    
+
+    /// Save configuration to file
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let content = toml::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+}
+
+impl Default for Config {
     /// Create default configuration
-    pub fn default() -> Self {
+    fn default() -> Self {
         Config {
             server: ServerConfig {
                 listen_addr: default_listen_addr(),
@@ -237,13 +252,6 @@ impl Config {
                 update_on_start: true,
             },
         }
-    }
-    
-    /// Save configuration to file
-    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = toml::to_string_pretty(self)?;
-        fs::write(path, content)?;
-        Ok(())
     }
 }
 

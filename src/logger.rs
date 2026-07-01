@@ -119,12 +119,7 @@ impl Visit for CharmVisitor<'_, '_> {
             self.wrote_message = true;
             self.result = write!(self.writer, "{}", value);
         } else {
-            self.result = write!(
-                self.writer,
-                " {}={}",
-                field.name().dimmed(),
-                value.dimmed()
-            );
+            self.result = write!(self.writer, " {}={}", field.name().dimmed(), value.dimmed());
         }
     }
 }
