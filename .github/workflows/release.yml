@@ -12,7 +12,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: taiki-e/create-gh-release-action@v1
+
   build:
+    needs: create-release
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
