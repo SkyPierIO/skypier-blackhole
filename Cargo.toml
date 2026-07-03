@@ -52,7 +52,7 @@ chrono = "0.4"
 tokio-cron-scheduler = "0.10"
 
 # Signal handling
-signal-hook = "0.3"
+signal-hook = "0.4"
 signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 nix = { version = "0.27", features = ["signal"] }
 
