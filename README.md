@@ -59,9 +59,9 @@ For the longer version, see [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ## Installing
 
-The project runs on Linux, macOS, and Windows. The signal-based hot reload
-(`SIGHUP`) is Unix only; on Windows you drive the same behaviour through the
-CLI instead.
+The current stable release runs on Linux and macOS. Windows support is in
+progress and will be released soon. The signal-based hot reload (`SIGHUP`) is
+Unix only.
 
 ### From source
 
@@ -105,7 +105,7 @@ on every invocation:
 |----------|--------|------------------|-----|
 | Linux | `/etc/skypier/blackhole.toml` | `/etc/skypier/custom-blocklist.txt` | `/var/log/skypier/blackhole.log` |
 | macOS | `/usr/local/etc/skypier/blackhole.toml` | `/usr/local/etc/skypier/custom-blocklist.txt` | `/usr/local/var/log/skypier/blackhole.log` |
-| Windows | `C:\ProgramData\Skypier\blackhole.toml` | `C:\ProgramData\Skypier\custom-blocklist.txt` | `C:\ProgramData\Skypier\Logs\blackhole.log` |
+| Windows (planned) | `C:\ProgramData\Skypier\blackhole.toml` | `C:\ProgramData\Skypier\custom-blocklist.txt` | `C:\ProgramData\Skypier\Logs\blackhole.log` |
 
 Pass `--config /path/to/blackhole.toml` to override.
 
@@ -434,8 +434,9 @@ skypier-blackhole update
 
 **How is this different from Pi-hole?** Same idea, much smaller surface. It's a
 single Rust binary with no PHP, no web UI, and no external cron, and it runs on
-macOS and Windows as well as Linux. The tradeoff is that you configure it
-through a TOML file and the CLI rather than a dashboard.
+Linux and macOS today (Windows support is in progress and will be released
+soon). The tradeoff is that you configure it through a TOML file and the CLI
+rather than a dashboard.
 
 **Can I use it as a Pi-hole replacement at home?** Yes. Set
 `listen_addr = "0.0.0.0"` and point your devices (or your router's DHCP DNS
