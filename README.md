@@ -58,16 +58,6 @@ round trip you'd otherwise pay to reach the upstream resolver.
 A query comes in over UDP/TCP on port 53. Before forwarding anything, the
 server checks the domain against the in-memory blocklist:
 
-```
-query ──> bloom filter ──(maybe)──> hashset (exact) ──> radix trie (wildcard)
-              │                          │                      │
-           definitely                  hit?                   hit?
-           not blocked                  │                      │
-              │                         └──────────┬───────────┘
-              ▼                                     ▼
-        forward upstream                    return blocked response
-```
-
 ![Blocklist lookup path](doc/diagram.svg)
 
 The bloom filter is a cheap first pass: if it says "no", the domain is
