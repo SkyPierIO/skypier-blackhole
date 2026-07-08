@@ -4,7 +4,7 @@
 
 <img src="doc/logo.png" alt="Skypier Blackhole Logo" height="240">
 
-DNS-based domain blocking for Skypier VPN nodes.
+A fast, blocklist-driven DNS sinkhole. Ad and tracker blocking for your server or local network.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust_1.70+-813374?style=flat&logo=rust&logoColor=white" alt="Rust 1.70+">
@@ -29,7 +29,31 @@ with no unsafe code. The lookup path is plain in-memory data structures, so
 deciding whether a domain is blocked costs nothing compared to the network
 round trip you'd otherwise pay to reach the upstream resolver.
 
+## Table of Contents
+
+- [How it works](#how-it-works)
+- [Installing](#installing)
+  - [From source](#from-source)
+  - [Debian/Ubuntu package](#debianubuntu-package)
+  - [Default paths](#default-paths)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+  - [Blocklists](#blocklists)
+  - [Automatic updates](#automatic-updates)
+- [Usage](#usage)
+  - [Running under systemd](#running-under-systemd)
+  - [Signals](#signals)
+  - [Serving a network](#serving-a-network)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+
 ## How it works
+
+[![asciicast](https://asciinema.org/a/1260394.svg)](https://asciinema.org/a/1260394)
 
 A query comes in over UDP/TCP on port 53. Before forwarding anything, the
 server checks the domain against the in-memory blocklist:
@@ -146,7 +170,7 @@ $ skypier-blackhole start
  ___/ /_/ / / /_/ / /__/ ,<  / / / / /_/ / /  __/__
 /________/_/\__,_/\___/_/|_|/_/ /_/\____/_/\______/
 
-  Skypier Blackhole v0.1.0
+  Skypier Blackhole v0.1.3
   A fast, blocklist-driven DNS sinkhole
 
   INFO Starting DNS server...
