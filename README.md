@@ -203,7 +203,7 @@ the upstream servers, and which blocklists to pull.
 [server]
 listen_addr = "127.0.0.1"          # "0.0.0.0" to serve a whole network
 listen_port = 53
-upstream_dns = ["1.1.1.1:53", "8.8.8.8:53"]
+upstream_dns = ["1.1.1.1:53", "8.8.8.8:53"]  # plain DNS and/or DoH (see below)
 blocked_response = "refused"       # "refused" | "nxdomain" | { ip = "0.0.0.0" }
 
 [blocklist]
@@ -232,7 +232,7 @@ Full reference:
 |---------|-----|---------|-------|
 | `server` | `listen_addr` | `127.0.0.1` | Use `0.0.0.0` to serve other machines |
 | | `listen_port` | `53` | Ports below 1024 need privileges (see below) |
-| | `upstream_dns` | `["1.1.1.1:53"]` | First responsive server wins |
+| | `upstream_dns` | `["1.1.1.1:53"]` | Plain `ip:port` or DoH `https://...` (see below) |
 | | `blocked_response` | `refused` | `refused`, `nxdomain`, or `{ ip = "..." }` |
 | `blocklist` | `remote_lists` | `[]` | URLs pulled by the updater |
 | | `local_lists` | `[]` | Files loaded from disk at startup |
@@ -245,6 +245,24 @@ Full reference:
 | | `schedule` | `0 0 0 * * *` | Cron expression (6-field: sec min hour dom month dow) |
 | | `timezone` | `EST` | Timezone the cron runs in |
 | | `update_on_start` | `true` | Refresh remote lists once at startup (background, non-fatal) |
+
+#### DNS over HTTPS upstreams
+
+Upstream entries can be DoH URLs instead of plain `ip:port`, so forwarded
+queries leave the box encrypted (clients still talk plain DNS to the
+blackhole). The format is `https://<host>[:port][/dns-query][@bootstrap_ip[:port]]`:
+
+```toml
+upstream_dns = [
+    "https://dns.quad9.net/dns-query@9.9.9.9:443",  # hostname + bootstrap IP
+    "https://1.1.1.1/dns-query",                    # IP-literal host, no bootstrap
+]
+```
+
+A hostname needs the `@bootstrap` suffix because there's no working resolver
+yet to look it up at startup; the hostname is still used for TLS certificate
+verification. The endpoint path must be `/dns-query` (the port defaults
+to 443).
 
 ### Blocklists
 

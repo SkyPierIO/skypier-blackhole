@@ -12,7 +12,7 @@ impl BlocklistDownloader {
     pub fn new() -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("Skypier-Blackhole/0.1.3")
+            .user_agent(concat!("Skypier-Blackhole/", env!("CARGO_PKG_VERSION")))
             .build()?;
 
         Ok(BlocklistDownloader { client })

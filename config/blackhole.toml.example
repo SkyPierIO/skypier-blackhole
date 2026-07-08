@@ -12,10 +12,17 @@ listen_port = 53
 
 # Upstream DNS servers to forward non-blocked queries
 # Default: Cloudflare DNS (1.1.1.1)
-# Alternative options:
+# Plain DNS options:
 #   - Google DNS: ["8.8.8.8:53", "8.8.4.4:53"]
 #   - Quad9: ["9.9.9.9:53"]
 #   - OpenDNS: ["208.67.222.222:53", "208.67.220.220:53"]
+# DNS over HTTPS (DoH) is also supported, keeping upstream queries encrypted.
+# Format: https://<host>[:port][/dns-query][@bootstrap_ip[:port]]
+# Hostnames need a bootstrap IP (there is no resolver yet at startup);
+# IP-literal hosts don't. The endpoint path must be /dns-query.
+#   - Quad9 DoH: ["https://dns.quad9.net/dns-query@9.9.9.9:443"]
+#   - Cloudflare DoH: ["https://cloudflare-dns.com/dns-query@1.1.1.1:443"]
+#   - Cloudflare DoH (IP host): ["https://1.1.1.1/dns-query"]
 upstream_dns = ["1.1.1.1:53"]
 
 # Response to return for blocked domains

@@ -249,7 +249,7 @@ mod tests {
             server: crate::config::ServerConfig {
                 listen_addr: "127.0.0.1".to_string(),
                 listen_port: 15353,
-                upstream_dns: vec!["1.1.1.1:53".to_string()],
+                upstream_dns: vec!["1.1.1.1:53".parse().unwrap()],
                 blocked_response: crate::config::BlockedResponse::Refused,
             },
             blocklist: crate::config::BlocklistConfig {

@@ -1,20 +1,25 @@
+use crate::config::Upstream;
 use crate::{BlocklistManager, Config, Result};
 use hickory_client::client::{AsyncClient, ClientHandle};
 use hickory_client::udp::UdpClientStream;
+use hickory_proto::h2::HttpsClientStreamBuilder;
+use hickory_proto::iocompat::AsyncIoTokioAsStd;
 use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::{Name, RData, Record, RecordType};
 use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::sync::Arc;
-use tokio::net::UdpSocket;
-use tokio::sync::RwLock;
+use std::sync::{Arc, OnceLock};
+use tokio::net::{TcpStream as TokioTcpStream, UdpSocket};
+use tokio::sync::{Mutex, RwLock};
 
 /// DNS server that blocks domains from blocklist and forwards allowed queries
 pub struct DnsServer {
     config: Arc<Config>,
     blocklist: Arc<BlocklistManager>,
     stats: Arc<RwLock<Statistics>>,
+    /// Cached connection to the upstream resolver, established lazily
+    upstream_client: Arc<Mutex<Option<AsyncClient>>>,
 }
 
 /// Statistics for monitoring
@@ -38,6 +43,7 @@ impl DnsServer {
             config: Arc::new(config),
             blocklist,
             stats: Arc::new(RwLock::new(stats)),
+            upstream_client: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -219,16 +225,6 @@ impl DnsServer {
         // Save original query ID
         let original_id = query.id();
 
-        // Parse upstream address
-        let upstream_addr: SocketAddr = upstream.parse()?;
-
-        // Create UDP client stream
-        let stream = UdpClientStream::<UdpSocket>::new(upstream_addr);
-        let (mut client, bg) = AsyncClient::connect(stream).await?;
-
-        // Spawn background task
-        tokio::spawn(bg);
-
         // Forward query
         let query_name = query
             .queries()
@@ -238,16 +234,61 @@ impl DnsServer {
         let name = Name::from_str(&query_name.name().to_utf8())?;
         let query_type = query_name.query_type();
 
-        // Send query to upstream using the low-level query method
-        let dns_response = client
-            .query(name, hickory_proto::rr::DNSClass::IN, query_type)
-            .await?;
+        let mut client = self.upstream_client(upstream).await?;
+        let dns_response = match client
+            .query(name.clone(), hickory_proto::rr::DNSClass::IN, query_type)
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                // The cached connection may have gone stale (e.g. the upstream
+                // closed an idle HTTP/2 session); reconnect and retry once
+                tracing::debug!(error = %e, upstream = %upstream, "Upstream query failed, reconnecting");
+                self.upstream_client.lock().await.take();
+                let mut client = self.upstream_client(upstream).await?;
+                client
+                    .query(name, hickory_proto::rr::DNSClass::IN, query_type)
+                    .await?
+            }
+        };
 
         // Convert DnsResponse to Message and restore original ID
         let mut response: Message = dns_response.into();
         response.set_id(original_id);
 
         Ok(response)
+    }
+
+    /// Get the cached upstream client, connecting if necessary
+    async fn upstream_client(&self, upstream: &Upstream) -> Result<AsyncClient> {
+        let mut cached = self.upstream_client.lock().await;
+        if let Some(client) = cached.as_ref() {
+            return Ok(client.clone());
+        }
+        let client = Self::connect_upstream(upstream).await?;
+        *cached = Some(client.clone());
+        Ok(client)
+    }
+
+    /// Establish a connection to an upstream resolver
+    async fn connect_upstream(upstream: &Upstream) -> Result<AsyncClient> {
+        let client = match upstream {
+            Upstream::Udp(addr) => {
+                let stream = UdpClientStream::<UdpSocket>::new(*addr);
+                let (client, bg) = AsyncClient::connect(stream).await?;
+                tokio::spawn(bg);
+                client
+            }
+            Upstream::DoH { addr, dns_name } => {
+                let builder = HttpsClientStreamBuilder::with_client_config(doh_client_config());
+                let connect =
+                    builder.build::<AsyncIoTokioAsStd<TokioTcpStream>>(*addr, dns_name.clone());
+                let (client, bg) = AsyncClient::connect(connect).await?;
+                tokio::spawn(bg);
+                client
+            }
+        };
+        Ok(client)
     }
 
     /// Get current statistics
@@ -269,6 +310,29 @@ impl DnsServer {
     }
 }
 
+/// TLS configuration for DoH upstreams, built once (root store parsing isn't free)
+fn doh_client_config() -> Arc<rustls::ClientConfig> {
+    static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+    CONFIG
+        .get_or_init(|| {
+            let mut roots = rustls::RootCertStore::empty();
+            roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+                rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                    ta.subject,
+                    ta.spki,
+                    ta.name_constraints,
+                )
+            }));
+            Arc::new(
+                rustls::ClientConfig::builder()
+                    .with_safe_defaults()
+                    .with_root_certificates(roots)
+                    .with_no_client_auth(),
+            )
+        })
+        .clone()
+}
+
 // Implement Clone for DnsServer to spawn tasks
 impl Clone for DnsServer {
     fn clone(&self) -> Self {
@@ -276,6 +340,7 @@ impl Clone for DnsServer {
             config: Arc::clone(&self.config),
             blocklist: Arc::clone(&self.blocklist),
             stats: Arc::clone(&self.stats),
+            upstream_client: Arc::clone(&self.upstream_client),
         }
     }
 }
@@ -288,5 +353,27 @@ impl Clone for Statistics {
             allowed_queries: self.allowed_queries,
             start_time: self.start_time,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Requires network access; run with `cargo test -- --ignored`
+    #[tokio::test]
+    #[ignore]
+    async fn test_doh_upstream_query() {
+        let upstream: Upstream = "https://9.9.9.9/dns-query".parse().unwrap();
+        let mut client = DnsServer::connect_upstream(&upstream).await.unwrap();
+
+        let name = Name::from_str("example.com.").unwrap();
+        let response = client
+            .query(name, hickory_proto::rr::DNSClass::IN, RecordType::A)
+            .await
+            .unwrap();
+
+        assert_eq!(response.response_code(), ResponseCode::NoError);
+        assert!(!response.answers().is_empty());
     }
 }

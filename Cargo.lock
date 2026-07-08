@@ -541,6 +541,7 @@ dependencies = [
  "once_cell",
  "radix_trie",
  "rand 0.8.5",
+ "rustls",
  "thiserror",
  "tokio",
  "tracing",
@@ -553,19 +554,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92652067c9ce6f66ce53cc38d1169daa36e6e7eb7dd3b63b5103bd9d97117248"
 dependencies = [
  "async-trait",
+ "bytes",
  "cfg-if",
  "data-encoding",
  "enum-as-inner",
  "futures-channel",
  "futures-io",
  "futures-util",
+ "h2 0.3.27",
+ "http 0.2.12",
  "idna",
  "ipnet",
  "once_cell",
  "rand 0.8.5",
+ "ring",
+ "rustls",
+ "rustls-pemfile",
  "thiserror",
  "tinyvec",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "url",
 ]
@@ -1522,7 +1530,7 @@ checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 
 [[package]]
 name = "skypier-blackhole"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bloomfilter",
@@ -1537,6 +1545,7 @@ dependencies = [
  "nix",
  "radix_trie",
  "reqwest",
+ "rustls",
  "serde",
  "signal-hook",
  "signal-hook-tokio",
@@ -1547,6 +1556,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "webpki-roots",
 ]
 
 [[package]]

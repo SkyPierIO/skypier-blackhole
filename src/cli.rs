@@ -509,7 +509,8 @@ impl Cli {
                         .server
                         .upstream_dns
                         .first()
-                        .unwrap_or(&"1.1.1.1:53".to_string())
+                        .map(|u| u.to_string())
+                        .unwrap_or_else(|| "1.1.1.1:53".to_string())
                         .bright_green()
                 );
 
@@ -859,7 +860,8 @@ impl Cli {
                             .server
                             .upstream_dns
                             .first()
-                            .unwrap_or(&"1.1.1.1:53".to_string())
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|| "1.1.1.1:53".to_string())
                             .bright_cyan()
                     );
                 }
