@@ -21,17 +21,19 @@ const DEFAULT_CONFIG_PATH: &str = "C:\\ProgramData\\Skypier\\blackhole.toml";
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 const DEFAULT_CONFIG_PATH: &str = "blackhole.toml";
 
-/// Print the startup ASCII art banner
-fn print_banner() {
-    let banner = r#"
+/// ASCII art logo, shared by the console banner and the TUI dashboard
+pub(crate) const BANNER: &str = r#"
        ____  __           __    __          __
       / __ )/ /___ ______/ /__ / /_  ____  / /__
      / __  / / __ `/ ___/ //_// __ \/ __ \/ / _ \
  ___/ /_/ / / /_/ / /__/ ,<  / / / / /_/ / /  __/__
 /________/_/\__,_/\___/_/|_|/_/ /_/\____/_/\______/
-   
+
 "#;
-    println!("{}", banner.bright_cyan());
+
+/// Print the startup ASCII art banner
+fn print_banner() {
+    println!("{}", BANNER.bright_cyan());
     println!(
         "  {} {}",
         "Skypier Blackhole".bright_white().bold(),
@@ -46,63 +48,7 @@ fn print_banner() {
 
 /// Load blocklist from configuration
 async fn load_blocklist_from_config(config: &Config, blocklist: &BlocklistManager) -> Result<()> {
-    let mut all_domains = Vec::new();
-
-    // Load from custom file if it exists
-    if std::path::Path::new(&config.blocklist.custom_list).exists() {
-        tracing::info!("Loading blocklist from {}", config.blocklist.custom_list);
-        let content = std::fs::read_to_string(&config.blocklist.custom_list)?;
-        let domains: Vec<String> = content
-            .lines()
-            .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
-            .map(|line| line.trim().to_string())
-            .collect();
-        all_domains.extend(domains);
-    } else {
-        tracing::warn!("Blocklist file not found: {}", config.blocklist.custom_list);
-    }
-
-    // Load from local lists
-    for local_list in &config.blocklist.local_lists {
-        if std::path::Path::new(local_list).exists() {
-            tracing::info!("Loading local blocklist from {}", local_list);
-            let content = std::fs::read_to_string(local_list)?;
-            let domains: Vec<String> = content
-                .lines()
-                .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
-                .map(|line| line.trim().to_string())
-                .collect();
-            all_domains.extend(domains);
-        } else {
-            tracing::warn!("Local blocklist file not found: {}", local_list);
-        }
-    }
-
-    // Load from remote cache if it exists
-    let cache_dir = std::path::Path::new(&config.blocklist.custom_list)
-        .parent()
-        .unwrap_or(std::path::Path::new("/tmp"));
-    let cache_file = cache_dir.join("remote-blocklist-cache.txt");
-
-    if cache_file.exists() {
-        tracing::info!(
-            "Loading remote blocklist cache from {}",
-            cache_file.display()
-        );
-        let content = std::fs::read_to_string(&cache_file)?;
-        let domains: Vec<String> = content
-            .lines()
-            .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
-            .map(|line| line.trim().to_string())
-            .collect();
-        tracing::info!("Loaded {} domains from remote cache", domains.len());
-        all_domains.extend(domains);
-    }
-
-    blocklist.load_domains(all_domains).await?;
-    let count = blocklist.count().await;
-    tracing::info!("Loaded {} total domains into blocklist", count);
-
+    crate::loader::load_blocklist(config, blocklist).await?;
     Ok(())
 }
 
@@ -226,11 +172,27 @@ pub enum Commands {
         #[arg(short, long, default_value_t = DEFAULT_CONFIG_PATH.to_string())]
         config: String,
     },
+
+    /// Start the DNS server with an interactive terminal dashboard
+    Tui {
+        /// Path to configuration file
+        #[arg(short, long, default_value_t = DEFAULT_CONFIG_PATH.to_string())]
+        config: String,
+    },
 }
 
 impl Cli {
+    /// Whether the TUI dashboard was requested (it owns the terminal, so the
+    /// console logger must not be installed)
+    pub fn is_tui(&self) -> bool {
+        matches!(self.command, Some(Commands::Tui { .. }))
+    }
+
     pub async fn execute(&self) -> Result<()> {
         match &self.command {
+            Some(Commands::Tui {
+                config: config_path,
+            }) => crate::tui::run(config_path).await,
             Some(Commands::Start {
                 config: config_path,
             }) => {

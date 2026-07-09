@@ -1,5 +1,5 @@
 use crate::config::Upstream;
-use crate::{BlocklistManager, Config, Result};
+use crate::{BlocklistManager, Config, Result, RuntimeMetrics};
 use hickory_client::client::{AsyncClient, ClientHandle};
 use hickory_client::udp::UdpClientStream;
 use hickory_proto::h2::HttpsClientStreamBuilder;
@@ -20,6 +20,8 @@ pub struct DnsServer {
     stats: Arc<RwLock<Statistics>>,
     /// Cached connection to the upstream resolver, established lazily
     upstream_client: Arc<Mutex<Option<AsyncClient>>>,
+    /// Optional in-RAM metrics sink (used by the TUI dashboard)
+    metrics: Option<Arc<RuntimeMetrics>>,
 }
 
 /// Statistics for monitoring
@@ -44,7 +46,14 @@ impl DnsServer {
             blocklist,
             stats: Arc::new(RwLock::new(stats)),
             upstream_client: Arc::new(Mutex::new(None)),
+            metrics: None,
         })
+    }
+
+    /// Attach an in-RAM metrics sink that will be updated for every query
+    pub fn with_metrics(mut self, metrics: Arc<RuntimeMetrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     /// Start the DNS server
@@ -148,6 +157,9 @@ impl DnsServer {
                 let mut stats = self.stats.write().await;
                 stats.blocked_queries += 1;
             }
+            if let Some(metrics) = &self.metrics {
+                metrics.record_blocked(&query_name);
+            }
 
             // Create blocked response
             self.create_blocked_response(&query)
@@ -158,6 +170,9 @@ impl DnsServer {
             {
                 let mut stats = self.stats.write().await;
                 stats.allowed_queries += 1;
+            }
+            if let Some(metrics) = &self.metrics {
+                metrics.record_allowed();
             }
 
             // Forward to upstream DNS
@@ -341,6 +356,7 @@ impl Clone for DnsServer {
             blocklist: Arc::clone(&self.blocklist),
             stats: Arc::clone(&self.stats),
             upstream_client: Arc::clone(&self.upstream_client),
+            metrics: self.metrics.clone(),
         }
     }
 }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Interactive terminal dashboard (`skypier-blackhole tui`) built with
+  [ratatui](https://ratatui.rs): runs the DNS server with a live activity log
+  (blocked queries highlighted), upstream resolver overview, in-RAM session
+  stats (query counts, block rate, top blocked domains since startup), and a
+  blocklist summary panel with per-source counts and last/next remote update.
+  Domains can be added/removed and remote lists updated/reloaded directly from
+  the dashboard (`a`/`d`/`u`/`r`).
+
 ## [0.2.0] - 2026-07-09
 
 ### Added
