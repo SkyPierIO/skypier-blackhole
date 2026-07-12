@@ -57,7 +57,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Data structures
-radix_trie = "0.2"
+radix_trie = "0.3"
 bloomfilter = "1.0"
 
 # Error handling
