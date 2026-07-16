@@ -11,49 +11,32 @@ use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use tokio::net::{TcpStream as TokioTcpStream, UdpSocket};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 /// DNS server that blocks domains from blocklist and forwards allowed queries
 pub struct DnsServer {
     config: Arc<Config>,
     blocklist: Arc<BlocklistManager>,
-    stats: Arc<RwLock<Statistics>>,
     /// Cached connection to the upstream resolver, established lazily
     upstream_client: Arc<Mutex<Option<AsyncClient>>>,
-    /// Optional in-RAM metrics sink (used by the TUI dashboard)
-    metrics: Option<Arc<RuntimeMetrics>>,
-}
-
-/// Statistics for monitoring
-#[derive(Debug, Default)]
-pub struct Statistics {
-    pub total_queries: u64,
-    pub blocked_queries: u64,
-    pub allowed_queries: u64,
-    pub start_time: Option<std::time::Instant>,
+    /// In-RAM query metrics, updated for every query
+    metrics: Arc<RuntimeMetrics>,
 }
 
 impl DnsServer {
     /// Create a new DNS server instance
     pub fn new(config: Config, blocklist: Arc<BlocklistManager>) -> Result<Self> {
-        let stats = Statistics {
-            start_time: Some(std::time::Instant::now()),
-            ..Default::default()
-        };
-
         Ok(DnsServer {
             config: Arc::new(config),
             blocklist,
-            stats: Arc::new(RwLock::new(stats)),
             upstream_client: Arc::new(Mutex::new(None)),
-            metrics: None,
+            metrics: Arc::new(RuntimeMetrics::new()),
         })
     }
 
-    /// Attach an in-RAM metrics sink that will be updated for every query
-    pub fn with_metrics(mut self, metrics: Arc<RuntimeMetrics>) -> Self {
-        self.metrics = Some(metrics);
-        self
+    /// Handle to the in-RAM query metrics (consumed by the TUI dashboard)
+    pub fn metrics(&self) -> Arc<RuntimeMetrics> {
+        Arc::clone(&self.metrics)
     }
 
     /// Start the DNS server
@@ -129,12 +112,6 @@ impl DnsServer {
         src: SocketAddr,
         socket: Arc<UdpSocket>,
     ) -> Result<()> {
-        // Update statistics
-        {
-            let mut stats = self.stats.write().await;
-            stats.total_queries += 1;
-        }
-
         // Extract query information
         let query_name = match query.queries().first() {
             Some(q) => q.name().to_utf8(),
@@ -150,30 +127,17 @@ impl DnsServer {
         let is_blocked = self.blocklist.is_blocked(&query_name).await;
 
         let response = if is_blocked {
-            // Domain is blocked
-            tracing::info!(domain = %query_name, source_ip = %src.ip(), "blocked");
-
-            {
-                let mut stats = self.stats.write().await;
-                stats.blocked_queries += 1;
-            }
-            if let Some(metrics) = &self.metrics {
-                metrics.record_blocked(&query_name);
-            }
+            // The `blocked` marker field is what the TUI keys its highlighting
+            // on; keep it if the message text changes.
+            tracing::info!(domain = %query_name, source_ip = %src.ip(), blocked = true, "blocked");
+            self.metrics.record_blocked(&query_name);
 
             // Create blocked response
             self.create_blocked_response(&query)
         } else {
             // Domain is allowed - forward to upstream
             tracing::debug!(domain = %query_name, source_ip = %src.ip(), "allowed");
-
-            {
-                let mut stats = self.stats.write().await;
-                stats.allowed_queries += 1;
-            }
-            if let Some(metrics) = &self.metrics {
-                metrics.record_allowed();
-            }
+            self.metrics.record_allowed();
 
             // Forward to upstream DNS
             self.forward_to_upstream(query).await?
@@ -306,17 +270,6 @@ impl DnsServer {
         Ok(client)
     }
 
-    /// Get current statistics
-    pub async fn get_stats(&self) -> Statistics {
-        let stats = self.stats.read().await;
-        Statistics {
-            total_queries: stats.total_queries,
-            blocked_queries: stats.blocked_queries,
-            allowed_queries: stats.allowed_queries,
-            start_time: stats.start_time,
-        }
-    }
-
     /// Stop the DNS server
     pub async fn stop(&self) -> Result<()> {
         tracing::info!("DNS server stopping...");
@@ -354,20 +307,8 @@ impl Clone for DnsServer {
         DnsServer {
             config: Arc::clone(&self.config),
             blocklist: Arc::clone(&self.blocklist),
-            stats: Arc::clone(&self.stats),
             upstream_client: Arc::clone(&self.upstream_client),
-            metrics: self.metrics.clone(),
-        }
-    }
-}
-
-impl Clone for Statistics {
-    fn clone(&self) -> Self {
-        Statistics {
-            total_queries: self.total_queries,
-            blocked_queries: self.blocked_queries,
-            allowed_queries: self.allowed_queries,
-            start_time: self.start_time,
+            metrics: Arc::clone(&self.metrics),
         }
     }
 }

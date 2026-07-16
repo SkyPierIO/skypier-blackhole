@@ -14,8 +14,12 @@ pub struct LogLine {
     pub level: Level,
     /// Message followed by ` key=value` pairs
     pub body: String,
-    /// Set when the event carries a `domain` field with message "blocked"
+    /// Set when the event carries `blocked = true` and a `domain` field
+    /// (see the blocked-query log call in dns.rs)
     pub blocked_domain: Option<String>,
+    /// How many consecutive times this exact line was logged; rendered as
+    /// an `(xN)` suffix when > 1, mirroring the CLI formatter's collapsing
+    pub repeat: u64,
 }
 
 pub type LogBuffer = Arc<Mutex<VecDeque<LogLine>>>;
@@ -38,7 +42,7 @@ impl<S: Subscriber> Layer<S> for TuiLogLayer {
         let mut visitor = LineVisitor::default();
         event.record(&mut visitor);
 
-        let blocked_domain = if visitor.message == "blocked" {
+        let blocked_domain = if visitor.blocked {
             visitor.domain.clone()
         } else {
             None
@@ -47,18 +51,31 @@ impl<S: Subscriber> Layer<S> for TuiLogLayer {
         let mut body = visitor.message;
         body.push_str(&visitor.fields);
 
-        let line = LogLine {
-            time: chrono::Local::now().format("%H:%M:%S").to_string(),
-            level: *event.metadata().level(),
-            body,
-            blocked_domain,
-        };
+        let time = chrono::Local::now().format("%H:%M:%S").to_string();
+        let level = *event.metadata().level();
 
         let mut buffer = self.buffer.lock().unwrap();
+
+        // Collapse consecutive identical lines (same repeated blocked tracker,
+        // typically) into one entry with a bumped repeat counter, like the CLI.
+        if let Some(last) = buffer.back_mut() {
+            if last.level == level && last.body == body {
+                last.repeat += 1;
+                last.time = time;
+                return;
+            }
+        }
+
         if buffer.len() >= self.capacity {
             buffer.pop_front();
         }
-        buffer.push_back(line);
+        buffer.push_back(LogLine {
+            time,
+            level,
+            body,
+            blocked_domain,
+            repeat: 1,
+        });
     }
 }
 
@@ -68,17 +85,21 @@ struct LineVisitor {
     message: String,
     fields: String,
     domain: Option<String>,
+    blocked: bool,
 }
 
 impl LineVisitor {
     fn record(&mut self, name: &str, value: String) {
-        if name == "message" {
-            self.message = value;
-        } else {
-            if name == "domain" {
-                self.domain = Some(value.clone());
+        match name {
+            "message" => self.message = value,
+            // Structured marker on blocked-query events; kept out of the body
+            "blocked" => self.blocked = value == "true",
+            _ => {
+                if name == "domain" {
+                    self.domain = Some(value.clone());
+                }
+                self.fields.push_str(&format!(" {}={}", name, value));
             }
-            self.fields.push_str(&format!(" {}={}", name, value));
         }
     }
 }
@@ -97,5 +118,32 @@ impl Visit for LineVisitor {
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
         self.record(field.name(), value.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    #[test]
+    fn consecutive_identical_lines_collapse_into_repeat_counter() {
+        let buffer: LogBuffer = Arc::new(Mutex::new(VecDeque::new()));
+        let subscriber =
+            tracing_subscriber::registry().with(TuiLogLayer::new(Arc::clone(&buffer), 10));
+
+        tracing::subscriber::with_default(subscriber, || {
+            for _ in 0..3 {
+                tracing::info!(domain = "ads.example.com", blocked = true, "blocked");
+            }
+            tracing::info!(domain = "other.example.com", blocked = true, "blocked");
+            tracing::info!(domain = "ads.example.com", blocked = true, "blocked");
+        });
+
+        let buffer = buffer.lock().unwrap();
+        let repeats: Vec<u64> = buffer.iter().map(|l| l.repeat).collect();
+        // A repeat only collapses while consecutive; interleaved lines start over
+        assert_eq!(repeats, vec![3, 1, 1]);
+        assert_eq!(buffer[0].blocked_domain.as_deref(), Some("ads.example.com"));
     }
 }

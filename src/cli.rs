@@ -5,7 +5,6 @@ use futures::stream::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use std::fs;
-use std::io::Write;
 use std::sync::Arc;
 
 // Platform-specific default config path
@@ -44,12 +43,6 @@ fn print_banner() {
         "A fast, blocklist-driven DNS sinkhole".bright_black()
     );
     println!();
-}
-
-/// Load blocklist from configuration
-async fn load_blocklist_from_config(config: &Config, blocklist: &BlocklistManager) -> Result<()> {
-    crate::loader::load_blocklist(config, blocklist).await?;
-    Ok(())
 }
 
 /// Find the PID of the running skypier-blackhole server
@@ -205,7 +198,7 @@ impl Cli {
                 let blocklist = Arc::new(BlocklistManager::new());
 
                 // Load initial blocklist
-                load_blocklist_from_config(&config, &blocklist).await?;
+                crate::loader::load_blocklist(&config, &blocklist).await?;
                 tracing::info!("Blocklist manager initialized");
 
                 // Create and start update scheduler
@@ -240,7 +233,7 @@ impl Cli {
                             }
                             SIGHUP => {
                                 tracing::info!("Received SIGHUP, reloading blocklists...");
-                                match load_blocklist_from_config(&config_clone, &blocklist_clone)
+                                match crate::loader::load_blocklist(&config_clone, &blocklist_clone)
                                     .await
                                 {
                                     Ok(_) => {
@@ -418,7 +411,7 @@ impl Cli {
                 // Load config and show blocklist stats
                 if std::path::Path::new(&config.blocklist.custom_list).exists() {
                     let blocklist = BlocklistManager::new();
-                    load_blocklist_from_config(&config, &blocklist).await?;
+                    crate::loader::load_blocklist(&config, &blocklist).await?;
                     let count = blocklist.count().await;
 
                     println!("  {} Blocklist Statistics:", "[*]".bright_cyan());
@@ -495,12 +488,7 @@ impl Cli {
                 println!();
 
                 // Add to custom blocklist file
-                let mut file = fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&config.blocklist.custom_list)?;
-
-                writeln!(file, "{}", domain)?;
+                crate::loader::append_custom_domain(&config, domain)?;
 
                 println!(
                     "  {} Domain added to: {}",
@@ -542,23 +530,9 @@ impl Cli {
                 );
                 println!();
 
-                // Read current blocklist
-                let content = fs::read_to_string(&config.blocklist.custom_list)?;
-                let domains: Vec<String> = content
-                    .lines()
-                    .map(|line| line.trim().to_string())
-                    .filter(|line| !line.is_empty() && line != domain)
-                    .collect();
-
-                let original_count = content.lines().count();
-                let new_count = domains.len();
-
-                if original_count == new_count {
+                if crate::loader::remove_custom_domain(&config, domain)?.is_none() {
                     println!("  {} Domain not found in blocklist", "[i]".bright_yellow());
                 } else {
-                    // Write back with trailing newline
-                    let content = domains.join("\n") + "\n";
-                    fs::write(&config.blocklist.custom_list, content)?;
                     println!(
                         "  {} Domain removed from: {}",
                         "[ok]".bright_green(),
@@ -597,7 +571,7 @@ impl Cli {
                 println!();
 
                 let blocklist = BlocklistManager::new();
-                load_blocklist_from_config(&config, &blocklist).await?;
+                crate::loader::load_blocklist(&config, &blocklist).await?;
                 let total = blocklist.count().await;
 
                 println!(
@@ -786,7 +760,7 @@ impl Cli {
                 println!();
 
                 let blocklist = BlocklistManager::new();
-                load_blocklist_from_config(&config, &blocklist).await?;
+                crate::loader::load_blocklist(&config, &blocklist).await?;
 
                 let is_blocked = blocklist.is_blocked(domain).await;
 

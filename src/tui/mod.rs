@@ -1,7 +1,7 @@
 mod logs;
 mod ui;
 
-use crate::loader::{self, SourceSummary};
+use crate::loader::{self, SourceKind, SourceSummary};
 use crate::{BlocklistManager, Config, DnsServer, Result, RuntimeMetrics, UpdateScheduler};
 use chrono::{DateTime, Local, Utc};
 use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -9,8 +9,6 @@ use futures::StreamExt;
 use logs::{LogBuffer, TuiLogLayer};
 use ratatui::DefaultTerminal;
 use std::collections::VecDeque;
-use std::io::Write;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -30,8 +28,15 @@ pub async fn run(config_path: &str) -> Result<()> {
     // Install log capture before anything logs: stdout belongs to the TUI,
     // so tracing events are rendered inside the activity panel instead.
     let log_buffer: LogBuffer = Arc::new(Mutex::new(VecDeque::new()));
+    // The activity panel is the TUI's only log sink and blocked queries are
+    // logged at INFO, so a warn/error config level would silently hide them.
+    let level = config.logging.log_level.to_lowercase();
+    let level = match level.as_str() {
+        "warn" | "error" => "info",
+        other => other,
+    };
     let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new(&config.logging.log_level))
+        .or_else(|_| EnvFilter::try_new(level))
         .or_else(|_| EnvFilter::try_new("info"))?;
     tracing_subscriber::registry()
         .with(filter)
@@ -55,10 +60,8 @@ pub async fn run(config_path: &str) -> Result<()> {
     }
     let scheduler = Arc::new(scheduler);
 
-    // DNS server with in-RAM metrics attached
-    let metrics = Arc::new(RuntimeMetrics::new());
-    let server = DnsServer::new((*config).clone(), Arc::clone(&blocklist))?
-        .with_metrics(Arc::clone(&metrics));
+    let server = DnsServer::new((*config).clone(), Arc::clone(&blocklist))?;
+    let metrics = server.metrics();
     let server_task = tokio::spawn(async move { server.start().await });
 
     scheduler.spawn_startup_refresh();
@@ -78,7 +81,7 @@ pub async fn run(config_path: &str) -> Result<()> {
         input: None,
         updating: Arc::new(AtomicBool::new(false)),
     };
-    app.refresh_summary();
+    app.refresh_cache_info();
 
     let terminal = ratatui::init();
     let result = app.run(terminal, server_task).await;
@@ -224,62 +227,32 @@ impl App {
 
     /// Append a domain to the custom list and activate it immediately
     async fn add_domain(&mut self, domain: String) {
-        let path = self.config.blocklist.custom_list.clone();
-        let write_result = (|| -> Result<()> {
-            if let Some(parent) = Path::new(&path).parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)?;
-            writeln!(file, "{}", domain)?;
-            Ok(())
-        })();
-
-        match write_result {
-            Ok(()) => {
+        match loader::append_custom_domain(&self.config, &domain) {
+            Ok(count) => {
                 if let Err(e) = self.blocklist.add_domain(domain.clone()).await {
                     tracing::error!(error = %e, "Failed to activate domain");
                     return;
                 }
                 tracing::info!(domain = %domain, "Domain added to custom blocklist");
-                self.refresh_summary();
+                self.set_source_count(SourceKind::Custom, Some(count));
             }
-            Err(e) => tracing::error!(error = %e, path = %path, "Failed to write custom blocklist"),
+            Err(e) => tracing::error!(error = %e, "Failed to write custom blocklist"),
         }
     }
 
     /// Remove a domain from the custom list and deactivate it immediately
     async fn remove_domain(&mut self, domain: String) {
-        let path = self.config.blocklist.custom_list.clone();
-        let remove_result = (|| -> Result<bool> {
-            let content = std::fs::read_to_string(&path)?;
-            let kept: Vec<&str> = content
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty() && *line != domain)
-                .collect();
-            let removed = kept.len() != content.lines().filter(|l| !l.trim().is_empty()).count();
-            if removed {
-                std::fs::write(&path, kept.join("\n") + "\n")?;
-            }
-            Ok(removed)
-        })();
-
-        match remove_result {
-            Ok(true) => {
+        match loader::remove_custom_domain(&self.config, &domain) {
+            Ok(Some(count)) => {
                 if let Err(e) = self.blocklist.remove_domain(&domain).await {
                     tracing::error!(error = %e, "Failed to deactivate domain");
                     return;
                 }
                 tracing::info!(domain = %domain, "Domain removed from custom blocklist");
-                self.refresh_summary();
+                self.set_source_count(SourceKind::Custom, Some(count));
             }
-            Ok(false) => tracing::warn!(domain = %domain, "Domain not found in custom blocklist"),
-            Err(e) => {
-                tracing::error!(error = %e, path = %path, "Failed to update custom blocklist")
-            }
+            Ok(None) => tracing::warn!(domain = %domain, "Domain not found in custom blocklist"),
+            Err(e) => tracing::error!(error = %e, "Failed to update custom blocklist"),
         }
     }
 
@@ -316,25 +289,35 @@ impl App {
             Ok(sources) => self.sources = sources,
             Err(e) => tracing::error!(error = %e, "Failed to reload blocklists"),
         }
-        self.refresh_summary();
+        self.refresh_cache_info();
     }
 
-    /// Re-read source files and the remote cache mtime for the summary panel
-    fn refresh_summary(&mut self) {
-        self.sources = loader::summarize_sources(&self.config);
+    /// Update the panel count of a single source without re-reading files
+    fn set_source_count(&mut self, kind: SourceKind, domains: Option<usize>) {
+        if let Some(source) = self.sources.iter_mut().find(|s| s.kind == kind) {
+            source.domains = domains;
+        }
+    }
+
+    /// Stat the remote cache mtime for the "last update" display
+    fn refresh_cache_info(&mut self) {
         self.cache_mtime = std::fs::metadata(loader::remote_cache_path(&self.config))
             .and_then(|m| m.modified())
             .ok();
         self.last_update = self.cache_mtime.map(DateTime::<Local>::from);
     }
 
-    /// Refresh the summary when a background update rewrote the remote cache
+    /// Re-count the remote cache when a background update rewrote it
     fn detect_cache_change(&mut self) {
         let mtime = std::fs::metadata(loader::remote_cache_path(&self.config))
             .and_then(|m| m.modified())
             .ok();
-        if mtime != self.cache_mtime {
-            self.refresh_summary();
+        if mtime == self.cache_mtime {
+            return;
         }
+        self.cache_mtime = mtime;
+        self.last_update = mtime.map(DateTime::<Local>::from);
+        let count = loader::count_domains(&loader::remote_cache_path(&self.config));
+        self.set_source_count(SourceKind::RemoteCache, count);
     }
 }

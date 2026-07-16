@@ -73,13 +73,17 @@ fn draw_left(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 log.body.clone().into()
             };
-            Line::from(vec![
+            let mut spans = vec![
                 log.time.clone().dark_gray(),
                 " ".into(),
                 level,
                 " ".into(),
                 body,
-            ])
+            ];
+            if log.repeat > 1 {
+                spans.push(format!(" (x{})", log.repeat).dark_gray());
+            }
+            Line::from(spans)
         })
         .collect();
     drop(logs);
@@ -288,12 +292,12 @@ fn draw_blocklists(frame: &mut Frame, app: &App, area: Rect) {
         };
         lines.push(Line::from(vec![
             Span::styled(
-                format!("  {:<13}", source.label),
+                format!("  {:<13}", source.kind.label()),
                 Style::default().fg(Color::Cyan),
             ),
             count,
             "  ".into(),
-            source.path.clone().dark_gray(),
+            source.path.display().to_string().dark_gray(),
         ]));
     }
     for url in &app.config.blocklist.remote_lists {
@@ -350,10 +354,12 @@ fn draw_input_popup(frame: &mut Frame, input: &InputState, area: Rect) {
     let width = 60.min(area.width.saturating_sub(4));
     let popup = Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + area.height / 2,
+        y: area.y + area.height.saturating_sub(3) / 2,
         width,
         height: 3,
-    };
+    }
+    // Rendering outside the buffer panics; clamp for tiny terminals
+    .intersection(area);
 
     frame.render_widget(Clear, popup);
     frame.render_widget(
