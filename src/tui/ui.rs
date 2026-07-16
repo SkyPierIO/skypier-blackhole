@@ -116,24 +116,24 @@ fn draw_right(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_upstreams(frame: &mut Frame, app: &App, area: Rect) {
+    let multiple = app.config.server.upstream_dns.len() > 1;
     let lines: Vec<Line> = app
         .config
         .server
         .upstream_dns
         .iter()
-        .enumerate()
-        .map(|(i, upstream)| {
-            let (marker, suffix) = if i == 0 {
-                ("● ".green(), " (active)".dark_gray())
+        .map(|upstream| {
+            let suffix = if multiple {
+                " (random per query)".dark_gray()
             } else {
-                ("○ ".dark_gray(), " (standby)".dark_gray())
+                "".into()
             };
             let kind = match upstream {
                 Upstream::Udp(_) => "UDP".cyan().bold(),
                 Upstream::DoH { .. } => "DoH".magenta().bold(),
             };
             Line::from(vec![
-                marker,
+                "● ".green(),
                 kind,
                 "  ".into(),
                 upstream.to_string().into(),

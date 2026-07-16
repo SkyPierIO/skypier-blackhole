@@ -47,7 +47,7 @@ pub enum BlockedResponse {
 
 /// An upstream resolver, either plain UDP (`1.1.1.1:53`) or DNS over HTTPS
 /// (`https://dns.quad9.net/dns-query@9.9.9.9:443`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(try_from = "String", into = "String")]
 pub enum Upstream {
     /// Plain DNS over UDP

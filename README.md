@@ -501,8 +501,8 @@ setting) at the host.
 **Can I whitelist domains?** Not yet, that's planned. For now, remove a domain
 from your lists rather than overriding it.
 
-**Multiple upstreams?** Yes, list them in `upstream_dns`. The first one that
-answers is used.
+**Multiple upstreams?** Yes, list them in `upstream_dns`. A random one is
+picked for each query, so no single resolver sees every lookup.
 
 **What list formats work?** One domain per line with `#` comments, including
 StevenBlack hosts files. Wildcards use the `*.domain.com` syntax.

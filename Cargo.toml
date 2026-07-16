@@ -34,6 +34,9 @@ systemd-units = { unit-name = "skypier-blackhole", unit-scripts = "systemd/", en
 tokio = { version = "1.35", features = ["full"] }
 futures = "0.3"
 
+# Randomized upstream selection
+rand = "0.8"
+
 # DNS server
 hickory-server = "0.24"
 hickory-client = { version = "0.24", features = ["dns-over-https-rustls"] }

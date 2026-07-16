@@ -1,3 +1,4 @@
+use crate::config::Upstream;
 use crate::{BlocklistDownloader, BlocklistManager, Config, DnsServer, Result, UpdateScheduler};
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -43,6 +44,24 @@ fn print_banner() {
         "A fast, blocklist-driven DNS sinkhole".bright_black()
     );
     println!();
+}
+
+/// Render the configured upstreams for display; queries are forwarded to a
+/// randomly picked one per query rather than always the first in the list
+fn format_upstream_list(upstreams: &[Upstream]) -> String {
+    if upstreams.is_empty() {
+        return "1.1.1.1:53".to_string();
+    }
+    let list = upstreams
+        .iter()
+        .map(|u| u.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if upstreams.len() > 1 {
+        format!("{list} (random per query)")
+    } else {
+        list
+    }
 }
 
 /// Find the PID of the running skypier-blackhole server
@@ -460,13 +479,7 @@ impl Cli {
                 println!(
                     "    {} Upstream DNS: {}",
                     "-".bright_white(),
-                    config
-                        .server
-                        .upstream_dns
-                        .first()
-                        .map(|u| u.to_string())
-                        .unwrap_or_else(|| "1.1.1.1:53".to_string())
-                        .bright_green()
+                    format_upstream_list(&config.server.upstream_dns).bright_green()
                 );
 
                 println!();
@@ -792,13 +805,7 @@ impl Cli {
                     println!(
                         "  {} DNS queries will be forwarded to upstream: {}",
                         "->".bright_white(),
-                        config
-                            .server
-                            .upstream_dns
-                            .first()
-                            .map(|u| u.to_string())
-                            .unwrap_or_else(|| "1.1.1.1:53".to_string())
-                            .bright_cyan()
+                        format_upstream_list(&config.server.upstream_dns).bright_cyan()
                     );
                 }
 

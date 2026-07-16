@@ -1800,6 +1800,7 @@ dependencies = [
  "mockito",
  "nix",
  "radix_trie 0.3.0",
+ "rand 0.8.5",
  "ratatui",
  "reqwest",
  "rustls",
