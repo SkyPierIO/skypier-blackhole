@@ -210,7 +210,7 @@ impl Cli {
             }) => {
                 print_banner();
 
-                let config = Config::load(config_path)?;
+                let config = Config::load_or_prompt_default(config_path)?;
                 tracing::info!("Starting DNS server...");
 
                 // Create blocklist manager

@@ -3,6 +3,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
+use std::io::{self, IsTerminal, Write};
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::str::FromStr;
@@ -371,6 +372,41 @@ impl Config {
         fs::write(path, content)
             .with_context(|| format!("Failed to write config file: {}", path.display()))?;
         Ok(())
+    }
+
+    /// Load configuration from `path`, offering to create a default config
+    /// there on first launch.
+    ///
+    /// If the file is missing and stdin is an interactive terminal, prompts
+    /// the user to write out `Config::default()` at `path` (creating parent
+    /// directories as needed) before loading. Non-interactive sessions and
+    /// declined prompts fall through to the plain `load` error.
+    pub fn load_or_prompt_default<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+
+        if !path.exists() && io::stdin().is_terminal() {
+            print!(
+                "No config file found at {}. Create a default one there now? [Y/n] ",
+                path.display()
+            );
+            io::stdout().flush().ok();
+
+            let mut answer = String::new();
+            io::stdin().read_line(&mut answer)?;
+            let answer = answer.trim().to_lowercase();
+
+            if answer.is_empty() || answer == "y" || answer == "yes" {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create config directory: {}", parent.display())
+                    })?;
+                }
+                Config::default().save(path)?;
+                println!("Wrote default configuration to {}", path.display());
+            }
+        }
+
+        Self::load(path)
     }
 }
 

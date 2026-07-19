@@ -23,7 +23,7 @@ const LOG_CAPACITY: usize = 500;
 
 /// Run the DNS daemon with the interactive dashboard attached
 pub async fn run(config_path: &str) -> Result<()> {
-    let config = Config::load(config_path)?;
+    let config = Config::load_or_prompt_default(config_path)?;
 
     // Install log capture before anything logs: stdout belongs to the TUI,
     // so tracing events are rendered inside the activity panel instead.
